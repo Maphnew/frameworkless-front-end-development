@@ -98,6 +98,222 @@ export default {
 
 #### 순수 함수 렌더링
 
+```html
+<html>
+
+<head>
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/todomvc-common@1.0.5/base.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/todomvc-app-css@2.1.2/index.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Faker/3.1.0/faker.js"></script>
+    <title>
+        Frameworkless Frontend Development: Rendering
+    </title>
+</head>
+
+<body>
+    <section class="todoapp">
+        <header class="header">
+            <h1>todos</h1>
+            <input class="new-todo" placeholder="What needs to be done?" autofocus>
+        </header>
+        <section class="main">
+            <input id="toggle-all" class="toggle-all" type="checkbox">
+            <label for="toggle-all">Mark all as complete</label>
+            <ul class="todo-list">
+            </ul>
+        </section>
+        <footer class="footer">
+            <span class="todo-count">1 Item Left</span>
+            <ul class="filters">
+                <li>
+                    <a href="#/">All</a>
+                </li>
+                <li>
+                    <a href="#/active">Active</a>
+                </li>
+                <li>
+                    <a href="#/completed">Completed</a>
+                </li>
+            </ul>
+            <button class="clear-completed">Clear completed</button>
+        </footer>
+    </section>
+    <footer class="info">
+        <p>Double-click to edit a todo</p>
+        <p>Created by <a href="http://twitter.com/thestrazz86">Francesco Strazzullo</a></p>
+        <p>Thanks to <a href="http://todomvc.com">TodoMVC</a></p>
+    </footer>
+    <script type="module" src="index.js"></script>
+</body>
+
+</html>
+```
+
+```javascript
+// index.js
+import getTodos from './getTodos.js'
+import view from './view.js'
+
+const state = {
+  todos: getTodos(),
+  currentFilter: 'All'
+}
+
+const main = document.querySelector('.todoapp')
+
+window.requestAnimationFrame(() => {
+  const newMain = view(main, state)
+  main.replaceWith(newMain) // todoapp 노드 전체를 바꿔치기
+}) // 간단한 렌더링 엔진, 이 API는 메인 스레드를 차단하지 않으며 다음 다시 그리기repaint가 이벤트 루프에서 스케줄링되기 직적에 실행된다.
+
+// 브라우저 렌더링 ->(requestAnimationFrame)-> 다음 렌더링 대기 -> 새 가상 노드 ->(replaceNode)-> DOM 조작 -> 브라우저 렌더링
+```
+
+- 이벤트 루프 동작방식 -> https://vimeo.com/254947206
+
+```js
+// view.js
+
+const getTodoElement = todo => {
+  const {
+    text,
+    completed
+  } = todo
+
+  return `
+  <li ${completed ? 'class="completed"' : ''}>
+    <div class="view">
+      <input 
+        ${completed ? 'checked' : ''}
+        class="toggle" 
+        type="checkbox">
+      <label>${text}</label>
+      <button class="destroy"></button>
+    </div>
+    <input class="edit" value="${text}">
+  </li>`
+}
+
+const getTodoCount = todos => {
+  const notCompleted = todos
+    .filter(todo => !todo.completed)
+
+  const { length } = notCompleted
+  if (length === 1) {
+    return '1 Item left'
+  }
+
+  return `${length} Items left`
+}
+
+export default (targetElement, state) => {
+  const {
+    currentFilter,
+    todos
+  } = state
+
+  const element = targetElement.cloneNode(true) // 1. targetElement(section.todoapp) 복제
+
+  const list = element.querySelector('.todo-list')
+  const counter = element.querySelector('.todo-count')
+  const filters = element.querySelector('.filters')
+
+  list.innerHTML = todos.map(getTodoElement).join('') // 2. todo 데이터를 html형태로 변환해 innerHTML로 채우기
+  counter.textContent = getTodoCount(todos) // 3. todo 갯수 계산하여 textContent로 채우기
+
+  Array
+    .from(filters.querySelectorAll('li a'))
+    .forEach(a => {
+      if (a.textContent === currentFilter) {
+        a.classList.add('selected')
+      } else {
+        a.classList.remove('selected')
+      }
+    }) // 4. state에 따라 필터에 classList.add / classList.remove로 class 부여하기
+
+  return element // 5. 복제되고 변환된 targetElement 반환
+}
+```
+
+
+```js
+// getTodos.js
+const { faker } = window
+
+const createElement = () => ({
+  text: faker.random.words(2),
+  completed: faker.random.boolean()
+})
+
+const repeat = (elementFactory, number) => {
+  const array = []
+  for (let index = 0; index < number; index++) {
+    array.push(elementFactory())
+  }
+  return array
+}
+
+export default () => {
+  const howMany = faker.random.number(10)
+  return repeat(createElement, howMany)
+}
+```
+
+
+
+#### 구성요소 함수
+
+- data 속성 사용
+```html
+<ul class="todo-list" data-component="todos"></ul>
+<span 
+    class="todo-count" 
+    data-component="counter">
+        1 Item Left
+</span>
+<ul class="filters" data-component="filters">
+</ul>
+```
+
+- 간단한 구성 요소 레지스트리
+```js
+const registry = {
+    'todos': todosView,
+    'counter': counterView,
+    'filters': filtersView
+}
+```
+
+- 고차 함수 렌더링
+```js
+  return (targetElement, state) => {
+    const element = component(targetElement, state)
+
+    const childComponents = element
+      .querySelectorAll('[data-component]')
+
+    Array
+      .from(childComponents)
+      .forEach(target => {
+        const name = target
+          .dataset
+          .component
+
+        const child = registry[name]
+        if (!child) {
+          return
+        }
+
+        target.replaceWith(child(target, state))
+      })
+
+    return element
+  }
+}f
+```
+
+
 ### 2-4. 동적 데이터 렌더링
 
 #### 가상 DOM
