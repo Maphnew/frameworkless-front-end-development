@@ -97,7 +97,7 @@ export default {
 #### TodoMVC
 
 #### 순수 함수 렌더링
-
+- Chapter02 - 01
 ```html
 <html>
 
@@ -260,33 +260,75 @@ export default () => {
 }
 ```
 
+#### 코드리뷰
+- Chapter02-02
 
+코드는 두 가지 중요한 문제를 갖고 있다.
 
-#### 구성요소 함수
+| 하나의 거대한 함수. 여러 DOM 요소를 조작하는 함수가 단 하나뿐이다.
+| 동일한 작업을 수행하는 여러 방법. 문자열을 통해 리스트 항목을 생성한다. todo count 요소의 경우 단순히 기존 요소에 text를 추가하기만 하면 된다. 필터의 경우 classlist를 관리한다.
+```js
+// 02/view/app.js
+// 작은 뷰 함수로 작성된 앱 뷰 함수
+import todosView from './todos.js'
+import counterView from './counter.js'
+import filtersView from './filters.js'
 
-- data 속성 사용
+export default (targetElement, state) => {
+  const element = targetElement.cloneNode(true)
+
+  const list = element
+    .querySelector('.todo-list')
+  const counter = element
+    .querySelector('.todo-count')
+  const filters = element
+    .querySelector('.filters')
+
+  list.replaceWith(todosView(list, state))
+  counter.replaceWith(counterView(counter, state))
+  filters.replaceWith(filtersView(filters, state))
+
+  return element
+}
+```
+
+#### 컴포넌트 함수
+- Chapter02-03
+- 컴포넌트 기반의 애플리케이션을 작성하려면 컴포넌트 간의 상호작용에 선언적 방식을 사용해야 한다. 시스템은 모든 부분을 자동으로 연결할 것이다.
+- 다음은 컴포넌트 레지스트리를 갖는 렌더링 엔진의 예이다. 컴포넌트를 사용하고자 data 속성을 사용한다. data 속성을 사용해 어떤 컴포넌트를 사용할지 결정하는 방법을 알 수 있다.
+- todos, counters, filters의 세 가지 컴포넌트를 가진다.
+
 ```html
+<!-- ... -->
 <ul class="todo-list" data-component="todos"></ul>
+<!-- ... -->
 <span 
     class="todo-count" 
     data-component="counter">
         1 Item Left
 </span>
+<!-- ... -->
 <ul class="filters" data-component="filters">
-</ul>
+  </ul>
+<!-- ... -->
 ```
 
-- 간단한 구성 요소 레지스트리
+- 간단한 컴포넌트 레지스트리
 ```js
 const registry = {
-    'todos': todosView,
+  'todos': todosView,
     'counter': counterView,
     'filters': filtersView
 }
 ```
+- 레지스트리의 키는 data-component 속성 값과 일치한다. 이것이 컴포넌트 기반 렌더링 엔진의 핵심 메커니즘이다. 이 매커니즘은 루트 컨테이너 뿐 아니라 생성할 모든 컴포넌트에도 적용돼야 한다. 이렇게 하면 모든 컴포넌트가 다른 컴포넌트 안에서도 사용될 수 있다. 이런 재사용성은 컴포넌트 기반 애플리케이션에서 필수적이다.
 
+- 이 작업을 위해서는 모든 컴포넌트가 data-component 속성의 값을 읽고 올바른 함수를 자동으로 호출하는 기본 컴포넌트에서 상속돼야 한다. 하지만 순수 함수로 작성하고 있기 때문에 실제로는 이 기본 객체에 상속받을 수 없다. 따라서 컴포넌트를 래핑하는 고차 함수를 생성해야 한다.
 - 고차 함수 렌더링
 ```js
+const registry = {}
+
+const renderWrapper = component => {
   return (targetElement, state) => {
     const element = component(targetElement, state)
 
@@ -310,8 +352,50 @@ const registry = {
 
     return element
   }
-}f
+}
 ```
+- 이 래퍼 함수는 원래 컴포넌트를 가져와 동일한 서명의 새로운 컴포넌트를 반환한다. 시스템에서 두 함수는 동일하다. 래퍼는 레지스트리에서 data-component 속성을 가진 모든 DOM요소를 찾는다. 요소가 발견되면 자식 컴포넌트를 호출한다. 그러나 자식 컴포넌트는 동일한 함수로 래핑된다. 이런 방식으로 재귀 함수처럼 마지막 컴포넌트까지 쉽게 탐색할 수 있다.
+
+- 레지스트리에 컴포넌트를 추가하려면 아래와 같이 이전 함수로 컴포넌트를 래핑하는 간단한 함수가 필요하다.
+```js
+const add = (name, component) => {
+  registry[name] = renderWrapper(component)
+}
+```
+- 또한 최초 DOM 요소에서 렌더링을 시작하려면 애플리케이션의 루트를 렌더링하는 메서드를 제공해야 한다. 예제 애플리케이션에서 이 메서드는 renderRoot며, 아래와 같다.
+```js
+const renderRoot = (root, state) => {
+  const cloneComponent = root => {
+    return root.cloneNode(true)
+  }
+  return renderWrapper(cloneComponent)(root, state)
+}
+```
+- add와 renderRoot 메서드는 컴포넌트 레지스트리의 공용 인터페이스다. 마지막으로 해야 할 일은 아래와 같이 컨트롤러에서 모든 요소를 혼합하는 것이다.
+```js
+import getTodos from './getTodos.js'
+import todosView from './view/todos.js'
+import counterView from './view/counter.js'
+import filtersView from './view/filters.js'
+
+import registry from './registry.js'
+
+registry.add('todos', todosView)
+registry.add('counter', counterView)
+registry.add('filters', filtersView)
+
+const state = {
+  todos: getTodos(),
+  currentFilter: 'All'
+}
+
+window.requestAnimationFrame(() => {
+  const main = document.querySelector('.todoapp')
+  const newMain = registry.renderRoot(main, state)
+  main.replaceWith(newMain)
+})
+```
+- 이것으로 첫 번째 컴포넌트 기반 애플리케이션을 프레임워크 없이 작성했다. 실제 컴포넌트 기반 애플리케이션의 첫 도약으로 생각해도 될 것이다. 
 
 
 ### 2-4. 동적 데이터 렌더링
