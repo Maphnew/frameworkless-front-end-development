@@ -265,7 +265,7 @@ export default () => {
 
 코드는 두 가지 중요한 문제를 갖고 있다.
 
-| 하나의 거대한 함수. 여러 DOM 요소를 조작하는 함수가 단 하나뿐이다.
+| 하나의 거대한 함수. 여러 DOM 요소를 조작하는 함수가 단 하나뿐이다.  
 | 동일한 작업을 수행하는 여러 방법. 문자열을 통해 리스트 항목을 생성한다. todo count 요소의 경우 단순히 기존 요소에 text를 추가하기만 하면 된다. 필터의 경우 classlist를 관리한다.
 ```js
 // 02/view/app.js
@@ -400,7 +400,132 @@ window.requestAnimationFrame(() => {
 
 ### 2-4. 동적 데이터 렌더링
 
+- replaceWith 메서드로 전체를 변경하는 대신 동적 데이터에 따라 효율적으로 변경하는 diff 알고리즘에 대해 알아보자
+- 사용자 이벤트에 대한 동적 데이터 렌더링을 살펴보기 전에 우선 데이터를 무작위로 변경하여 diff 알고리즘이 작동하도록 수정한다.
+
+```js
+// index.js
+
+// ...
+const render = () => {
+  window.requestAnimationFrame(() => {
+    const main = document.querySelector('.todoapp')
+    const newMain = registry.renderRoot(main, state)
+    main.replaceWith(newMain)
+  })
+}
+
+window.setInterval(() => {
+  state.todos = getTodos()
+  retnder()
+}, 5000)
+
+render()
+```
+
 #### 가상 DOM
+
+- 리액트에 의해 유명해진 가상DOM 개념은 선언적 랜더링 엔진의 성능을 개선시키는 방법이다.
+- UI표현은 메모리에 유지되고 실제 DOM과 동기화된다. 실제 DOM은 가능한 한 적은 작업을 수행한다. 이 과정은 조정reconciliation이라고 불린다.
+- 이전 알고리즘에서는 전체 ui를 교체했다. 가상 DOM 방법을 사용하면 실제 DOM에 필요한 작업을 동적으로 이해한다. 
+- 가상 DOM의 핵심은 diff알고리즘이다. 이 알고리즘은 실제 DOM을 문서에서 분리된 새로운 DOM 요소의 사본으로 바꾸는 가장 빠른 방법을 찾아낸다.
+
+#### 간단한 가상 DOM 구현
+- 메인 컨트롤러에서 replaceWith를 대체할 간단한 diff알고리즘을 구현해보자.
+
+```js
+const render = () => {
+  window.requestAnimationFrame(() => {
+    const main = document.querySelector('.todoapp')
+    const newMain = registry.renderRoot(main, state)
+    applyDiff(document.body, main, newMain)
+  })
+}
+```
+- applyDiff함수의 매개변수는 현재 DOM노드와 실제 DOM노드, 새로운 가상 DOM노드의 부모이다. 이 함수의 역할을 분석해보자.
+
+```js
+// applyDiff.js
+const applyDiff = (
+  parentNode,
+  realNode,
+  virtualNode) => {
+  // 먼저 새 노드가 정의되지 않은 경우 실제 노드를 삭제한다.
+  if(realNode && !virtualNode) {
+    realNode.remove()
+    return
+  }
+  // 실제 노드가 정의되지 않았지만 가상 노드가 존재하는 경우 부모 노드에 추가한다.
+  if(!realNode && virtualNode) {
+    parentNode.appendChild(virtualNode)
+    return
+  }
+  // 두 노드가 모두 정의된 경우 노드 간에 차이가 있는지 확인한다.
+  // isNodeChanged 함수는 잠시 후에 분석한다.
+  if(isNodeChanged(virtualNode, realNode)) {
+    realNode.replaceWith(virtualNode)
+    return
+  }
+  // 모든 하위 노드에 대해 동일한 diff 알고리즘을 적용해야 한다.
+  const realChidren = Array.from(realNode.children)
+  const virtualChildren = Array.from(virtualNode.children)
+
+  const max = Math.max(
+    realChildren.length,
+    virtualChildren.length
+  )
+
+  for (let i = 0; i < max; i++) {
+    applyDiff(
+      realNode,
+      realChildren[i],
+      virtualChildren[i]
+    )
+  }
+}
+```
+- isNodeChanged 함수
+```js
+const isNodeChanged = (node1, node2) => {
+  const n1Attributes = node1.attributes
+  const n2Attributes = node2.attributes
+  // 속성 갯수가 차이 나면 변경 됐다고 판단
+  if(n1Attributes.length !== n2Attributes.length) {
+    return true
+  }
+  // 같은 속성의 값이 다르면 변경 됐다고 판단 
+  const differentAttribute = Array
+    .from(n1Attributes)
+    .find(attribute => {
+      const {name} = attribute
+      const attribute1 = node1
+        .getAttribute(name)
+      const attribute2 = node2
+        .getAttribute(name)
+
+      return attribute1 !== attribute2
+    })
+  
+  if(differentAttribute) {
+    return true
+  }
+  // 자녀 노드가 없을 때 textContent를 비교해서 판단
+  if(node1.children.length === 0 &&
+    node2.children.length === 0 &&
+    node1.textContent !== node2.textContent) {
+    return true
+  }
+
+  return false
+}
+```
+- 이 diff 알고리즘 구현에서는 노드를 다른 노드와 비교해 노드가 변경됐는지 확인 한다.
+  - 속성 수가 다르다.
+  - 하나 이상의 속성이 변경됐다.
+  - 노드에 자식이 없으며 textContent가 변경됐다.
+
+- 2장에서 언급한 도구 중 하나로 성능을 비교하자. 개선된 검사 수행으로 성능을 높일 수 있지만 렌더링 엔진을 최대한 간단하게 유지하는 것이 좋다.
+- 문제가 발생하면 상황에 맞게 알고리즘을 조정한다. 시기 상조의 최적화는 모든 악의 근원이다.
 
 ### 2-5. 요약
 
