@@ -532,19 +532,68 @@ const isNodeChanged = (node1, node2) => {
 
 ## 3장 DOM 이벤트 관리
 
+- DOM 이벤트 핸들러와 이를 DOM 요소에 올바르게 연결하는 방법을 배운다.
+
 ### 3-1. YAGNI 원칙
+
+- 2장에서 이벤트를 무시한 엔진을 배운 이유는 가독성과 단순성 때문이다. 
 
 ### 3-2. DOM 이벤트 API
 
+- DOM 요소에 이벤트를 연결해 여러가지 이벤트가 발생할 때 반응하는 핸들러(콜백)로 반응할 수 있다.
+
 #### 속성에 핸들러 연결
+
+- on으로 시작하는 속성을 사용하여 이벤트가 발생할 때 핸들러를 트리거 시킬 수 있다. 버튼에는 onclick, ondblclick, onmouseover, onblur 등이 있다.
+- 이 속성을 사용하면 한번에 하나의 핸들러만 연결할 수 있다. 
 
 #### addEventListener로 핸들러 연결
 
+- addEventListener는 이벤트 핸들러를 DOM 노드에 추가한다. on으로 시작하는 property 메서드와는 달리 필요한 모든 핸들러를 연결할 수 있다.
+- DOM에 요소가 더 이상 존재하지 않으면 메모리 누수를 방지하고자 이벤트 리스너도 삭제해야 한다. 이를 위해 removeEventListener 메서드를 사용한다. removeEventListener 메서드를 사용하려면 매개변수로 전달할 수 있도록 핸들러에 대한 참조를 유지해야 한다.
+
 #### 이벤트 객체
+
+- 이벤트 핸들러의 서명은 DOM 노드나 시스템에서 생성한 이벤트를 나타내는 매개변수를 포함할 수 있다. 이벤트에는 포인터 좌표, 이벤트 타입, 이벤트를 트리거한 요소 같은 유용한 정보가 많이 들어 있다.
+- 웹 어플리케이션에 전달된 모든 이벤트에는 Event 인터페이스를 구현한다. 타입에 따라 이벤트 객체는 Event 인터페이스를 확장하는 좀 더 구체적인 Event 인터페이스를 구현할 수 있다.   
+| Event <- UIEvent <- MouseEvent  
 
 #### DOM 이벤트 라이프사이클
 
+- addEventListener의 세 번째 매개변수는 useCapture라고 불리며 기본값은 false이다.
+```js
+button.addEventListener('click', handler, false)
+```
+
+- 이는 이벤트 캡처 단계에서 핸들러를 발생시킬지 여부를 설정하는 값이다.
+- DOM 이벤트 라이프사이클은 캡처 단계 -> 목표 단계 -> 버블 단계로 이루어져 있다.
+
 #### 사용자 정의 이벤트 사용
+- 사용자 정의 이벤트 타입을 정의하고 다른 이벤트 처럼 처리할 수 있다.
+- 사용자 정의 이벤트를 생성하려면 CustomEvent 생성자 함수를 사용한다.
+```js
+const EVENT_NAME = 'FiveCharInputValue'
+const input = document.querySelector('input')
+
+input.addEventListener('input', () => {
+  const {length} = input.value
+  console.log('input length', length)
+  if (length === 5) {
+    const time = (new Date()).getTime()
+    const event = new CustomEvent(EVENT_NAME, {
+      detail: { time }
+    })
+    input.dispatchEvent(event)
+  }
+})
+
+input.addEventListener(EVENT_NAME, e => {
+  console.log('handling custom event...', e.detail)
+})
+```
+- input 이벤트를 관리할 때 값 자체의 길이를 확인하다. 값의 길이가 정확히 5라면 사용자 정의 이벤트를 발생시킨다. 사용자 정의 이벤트를 처리하려면 일반적으로 addEventListener 메서드로 표준 이벤트 리스너를 추가한다.
+- 어떻게 표준(input)과 사용자 정의 이벤트 모두에 동일한 API를 사용하는지에 주목하자. 또한 생성자(예제의 경우 timestamp)에서 사용한 detail 객체를 사용해 추가 데이터를 핸들러에 전달할 수도 있다.
+- 4장에서는 사용자 정의 이벤트를 사용해 컴포넌트가 서로 통신하는 방법을 알아본다. 
 
 ### 3-3. TodoMVC에 이벤트 추가
 
