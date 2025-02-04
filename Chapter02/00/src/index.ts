@@ -1,6 +1,6 @@
+import { State } from './types.js'
 import getTodos from './getTodos.js'
 import view from './view.js'
-import { State } from './types.js'
 
 const state: State = {
     todos: getTodos(),
