@@ -597,9 +597,313 @@ input.addEventListener(EVENT_NAME, e => {
 
 ### 3-3. TodoMVC에 이벤트 추가
 
+- TodoMVC 애플리케이션에 이벤트 처리를 추가해보자.
+- 다음은 관리해야 할 이벤트 목록이다.
+1. 항목 삭제: 행의 오른쪽에 있는 십자가를 클릭한다.
+1. 항목의 완료 여부 토글: 행의 왼쪽에 있는 원을 클릭한다.
+1. 필터 변경: 하단의 필터 이름을 클릭한다.
+1. 항목 생성: 상단 입력 텍스트에 값을 입력하고 키보드의 Enter를 누른다.
+1. 완성된 모든 항목 삭제: 'Clear completed' 레이블을 클릭한다.
+1. 모든 항목의 완료 여부 토글: 왼쪽 상단 모서리에 있는 V자 표시를 클릭한다.
+1. 항목 편집: 행을 더블 클릭하고 값을 변경한 후 키보드에서 Enter를 누른다.
+
 #### 렌더링 엔진 리뷰
 
+- 이벤트 핸들러를 추가하기 전에 렌더링 엔진의 일부를 변경해야 한다. 
+- 2장에서 작성한 마지막 구현의 문제점은 일부가 DOM 요소 대신 문자열로 동작한다는 것이다.
+- 아래 코드는 Chapter02/05에서 확인할 수 있다.
+
+```javascript
+const getTodoElement = todo => {
+  const {
+    text,
+    completed
+  } = todo
+
+  return `
+      <li ${completed ? 'class="completed"' : ''}>
+        <div class="view">
+          <input 
+            ${completed ? 'checked' : ''}
+            class="toggle" 
+            type="checkbox">
+          <label>${text}</label>
+          <button class="destroy"></button>
+        </div>
+        <input class="edit" value="${text}">
+      </li>`
+}
+
+export default (targetElement, { todos }) => {
+  const newTodoList = targetElement.cloneNode(true)
+  const todosElements = todos
+    .map(getTodoElement)
+    .join('')
+  newTodoList.innerHTML = todosElements
+  return newTodoList
+}
+```
+
+- 리스트의 모든 todo 요소는 문자열로 생성되고 하나로 합쳐진 다음 innerHTML로 부모 리스트에 추가된다.
+- 그러나 문자열에는 이벤트 핸덜러를 추가할 수 없다.
+- addEventListener를 호출하려면 DOM 노드가 필요하다.
+
+#### 템플릿 요소
+- 프로그래밍 방식으로 DOM노드를 생성하는 다양한 기술이 있다.
+- 그 중 하나는 document.createElement API를 사용해 비어있는 새 DOM 노드를 생성하는 것이다.
+- 그러나 이런 코드는 읽고 유지하기 어렵다.
+- 또 다른(더 나은) 옵션은 template 태그 안에 todo 요소의 마크업을 유지하는 것이다.
+- template 태그는 이름에서 알 수 있듯이 렌더링 엔진의 '스탬프'로 사용할 수 있는 보이지 않는 태그다.
+
+```html
+<template id="todo-item">
+    <li>
+        <div class="view">
+            <input class="toggle" type="checkbox">
+            <label></label>
+            <button class="destroy"></button> 
+        </div>
+        <input class="edit">
+    </li>
+</template>
+```
+
+- 아래 코드에서 template은 todo 구성 요소에서 '스탬프'로 사용돼 새로운 li DOM 노드를 생성한다.
+
+```js
+let template
+
+const createNewTodoNode = () => {
+    if(!template) {
+        template = document.getElementById('todo-item')
+    }
+    return template
+        .content
+        .firstElementChild
+        .cloneNode(true)
+}
+
+const getTodoElement = todo => {
+    const {
+        text,
+        completed
+    } = todo
+    const element = createNewTodoNode()
+
+    element.querySelector('input.edit').value = text
+    element.querySelector('label').textContent = text
+    
+    if (completed) {
+        element
+          .classList
+          .add('completed')
+    
+        element
+          .querySelector('input.toggle')
+          .checked = true
+    }
+
+    return element
+}
+
+export default (targetElement, { todos }) => {
+  const newTodoList = targetElement.cloneNode(true)
+
+  newTodoList.innerHTML = ''
+
+  todos
+    .map(getTodoElement)
+    .forEach(element => {
+      newTodoList.appendChild(element)
+    })
+
+  return newTodoList
+}
+```
+
+- 그런 다음 앱 컴포넌트 요소를 생성해 탬플릿 기술을 모든 애플리케이션으로 확장할 수 있다. 첫 번째 단계는 todo 리스트의 마크업을 template 요소로 감싸는 것이다.
+
+```html
+<body>
+    <template id="todo-item">
+        <!-- todo 항목 내용 -->
+    </template>
+    <template id="todo-app">
+        <!-- 앱 내용 -->
+    </template>
+    <div id="root">
+        <div data-component="app"></div>
+    </div>
+</body>
+```
+
+- app 컴포넌트에 새로 작성된 템플릿을 사용해 콘텐츠를 생성한다.
+- Chapter03/01.1
+
+```js
+let template
+
+const createAppElement = () => {
+  if (!template) {
+    template = document.getElementById('todo-app')
+  }
+
+  return template
+    .content
+    .firstElementChild
+    .cloneNode(true)
+}
+
+export default (targetElement) => {
+  const newApp = targetElement.cloneNode(true)
+  newApp.innerHTML = ''
+  newApp.appendChild(createAppElement())
+  return newApp
+}
+```
+
 #### 기본 이벤트 처리 아키텍처
+
+- 문자열 대신 DOM 요소로 동작하는 새로운 렌더링 엔진을 작성했다. 이제 이벤트 핸들러를 애플리케이션에 연결해보자.
+- 여기서 작성한 렌더링 엔진은 상태를 가져오고 DOM트리를 생성하는 순수 함수를 기반으로 한다.
+- 새로운 상태마다 새로운 DOM트리를 생성해 가상 DOM 알고리즘을 적용할 수 있다. 상태-렌더링-이벤트 루프의 스키마를 적용할 수 있다.
+
+1. 초기 상태: 비어있는 todo리스트
+1. 랜더링: 사용자에게 비어있는 리스트를 표시
+1. 이벤트: 사용자가 '더미 항목'이라는 새 항목을 생성
+1. 새로운 상태: 하나의 항목을 가진 todo 리스트
+1. 렌더링: 하나의 항목을 가진 todo 리스트
+1. 이벤트: 사용자가 항목을 삭제
+1. 새로운 상태: 비어있는 todo 리스트
+1. 렌더링: 사용자에게 비어있는 리스트를 표시
+
+- 고수준 아키텍처를 정의했고 이제 구현할 차례다. 아래는 컨트롤러에서 이벤트와 관련된 상태 수정을 정의한다.
+- Chapter03/01.2
+
+```js
+const state = {
+  todos: [],
+  currentFilter: 'All'
+}
+
+const events = {
+  deleteItem: (index) => {
+    state.todos.splice(index, 1)
+    render()
+  },
+  addItem: text => {
+    state.todos.push({
+      text,
+      completed: false
+    })
+    render()
+  }
+}
+
+const render = () => {
+  window.requestAnimationFrame(() => {
+    const main = document.querySelector('#root')
+
+    const newMain = registry.renderRoot(
+      main,
+      state,
+      events)
+
+    applyDiff(document.body, main, newMain)
+  })
+}
+
+render()
+```
+
+- 렌더링 엔진의 진입점인 renderRoot 함수는 이벤트를 포함하는 세 번째 매개변수를 받는다.
+- 새로운 매개변수는 모든 컴포넌트에 접근할 수 있다
+
+```js
+let template
+
+const getTemplate = () => {
+  if (!template) {
+    template = document.getElementById('todo-app')
+  }
+
+  return template
+    .content
+    .firstElementChild
+    .cloneNode(true)
+}
+
+const addEvents = (targetElement, events) => {
+  targetElement
+    .querySelector('.new-todo')
+    .addEventListener('keypress', e => {
+      if (e.key === 'Enter') {
+        events.addItem(e.target.value)
+        e.target.value = ''
+      }
+    })
+}
+
+export default (targetElement, state, events) => {
+  const newApp = targetElement.cloneNode(true)
+
+  newApp.innerHTML = ''
+  newApp.appendChild(getTemplate())
+
+  addEvents(newApp, events)
+
+  return newApp
+}
+```
+
+- 모든 렌더링 주기에 대해 새 DOM 요소를 생성하고 새 항목의 값을 삽입하는 데 사용되는 input 핸들러에 이벤트 핸들러를 연결한다. 사용자가 Enter를 누르면 addItem 함수가 호출되고 그런 다음 input 핸들러가 지워진다.
+- 이 예제에서 사용자가 수행할 수 있는 다른 작업으로 항목 삭제가 있다. 이벤트에 접근해야 하는 구성 요소는 todo다.
+
+```js
+const getTodoElement = (todo, index, events) => {
+  const {
+    text,
+    completed
+  } = todo
+
+  const element = createNewTodoNode()
+
+  element.querySelector('input.edit').value = text
+  element.querySelector('label').textContent = text
+
+  if (completed) {
+    element.classList.add('completed')
+    element
+      .querySelector('input.toggle')
+      .checked = true
+  }
+
+  const handler = e => events.deleteItem(index)
+
+  element
+    .querySelector('button.destroy')
+    .addEventListener('click', handler)
+
+  return element
+}
+
+export default (targetElement, { todos }, events) => {
+  const newTodoList = targetElement.cloneNode(true)
+
+  newTodoList.innerHTML = ''
+
+  todos
+    .map((todo, index) => getTodoElement(todo, index, events))
+    .forEach(element => {
+      newTodoList.appendChild(element)
+    })
+
+  return newTodoList
+}
+```
+
+- 모든 todo 리스트에 대해 다른 핸들러를 작성했다.
+- Chapter03/01.3 에서 코드를 확인할 수 있다.
 
 ### 3-4. 이벤트 위임
 
